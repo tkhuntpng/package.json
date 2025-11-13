@@ -1,0 +1,64 @@
+const path = require('path');
+filename: req.file.filename,
+originalName: req.file.originalname,
+viewsLeft: 1, // view-once
+createdAt: Date.now()
+};
+
+
+writeDB(db);
+
+
+const link = `${req.protocol}://${req.get('host')}/s/${token}`;
+res.json({ link, token });
+});
+
+
+// Serve file (view-once)
+app.get('/s/:token', (req, res) => {
+const token = req.params.token;
+const db = readDB();
+const meta = db[token];
+if (!meta) return res.status(404).send('Not found or already viewed');
+
+
+const filepath = path.join(UPLOAD_DIR, meta.filename);
+if (!fs.existsSync(filepath)) {
+// cleanup if file missing
+delete db[token];
+writeDB(db);
+return res.status(410).send('File gone');
+}
+
+
+// Stream file and then delete
+const stat = fs.statSync(filepath);
+const mimeType = mime.getType(filepath) || 'application/octet-stream';
+
+
+res.setHeader('Content-Type', mimeType);
+res.setHeader('Content-Length', stat.size);
+
+
+const readStream = fs.createReadStream(filepath);
+readStream.pipe(res);
+
+
+readStream.on('close', () => {
+// after streaming complete, delete file and metadata
+try {
+fs.unlinkSync(filepath);
+} catch (e) { /* ignore */ }
+delete db[token];
+writeDB(db);
+});
+
+
+readStream.on('error', () => {
+res.status(500).end();
+});
+});
+
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
